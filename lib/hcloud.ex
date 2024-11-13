@@ -5,7 +5,6 @@ defmodule ClusterHcloud.Hcloud do
 
   use HTTPoison.Base
 
-
   @api_baseurl "https://api.hetzner.cloud/v1"
 
   @impl true
@@ -14,8 +13,13 @@ defmodule ClusterHcloud.Hcloud do
   end
 
   @impl true
-  def process_response_body(body) do
-    Jason.decode!(body)
+  def process_response(%HTTPoison.Response{status_code: 200, body: body} = response) do
+    %{response | body: Jason.decode!(body)}
+  end
+
+  @impl true
+  def process_response(%HTTPoison.Response{} = response) do
+    response
   end
 
   @doc """
@@ -25,25 +29,32 @@ defmodule ClusterHcloud.Hcloud do
     headers = [
       authorization_header(access_token)
     ]
+
     params = %{
       label_selector: label_selector,
       per_page: 50,
       page: page
     }
+
     case get("/servers", headers, params: params) do
       {:ok, %HTTPoison.Response{body: body, status_code: 200}} ->
         results =
           Enum.concat(results, body["servers"])
+
         case body["meta"]["pagination"]["next_page"] do
           nil ->
             {:ok, results}
+
           next_page when is_integer(next_page) ->
             servers(access_token, label_selector, next_page, results)
+
           _ ->
             {:error, "Malformed pagination information returned from hetzner."}
         end
+
       {:ok, %HTTPoison.Response{status_code: status_code}} ->
         {:error, "Received status code #{status_code}"}
+
       {:error, %HTTPoison.Error{reason: reason}} ->
         {:error, reason}
     end
@@ -57,19 +68,24 @@ defmodule ClusterHcloud.Hcloud do
     headers = [
       authorization_header(access_token)
     ]
+
     params = %{
       name: network_name
     }
+
     case get("/networks", headers, params: params) do
       {:ok, %HTTPoison.Response{body: body, status_code: 200}} ->
         case body["networks"] do
-          [first_network | _rest ] ->
+          [first_network | _rest] ->
             {:ok, first_network["id"]}
+
           [] ->
             {:error, "Network \"#{network_name}\" not found."}
         end
+
       {:ok, %HTTPoison.Response{status_code: status_code}} ->
         {:error, "Received status code #{status_code}"}
+
       {:error, %HTTPoison.Error{reason: reason}} ->
         {:error, reason}
     end
